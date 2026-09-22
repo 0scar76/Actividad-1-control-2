@@ -1,6 +1,6 @@
 import socket
-import sockeTCP
-impost sys
+import socketTCP
+import sys
 
 MAX_PACKET_SIZE = 16
 
