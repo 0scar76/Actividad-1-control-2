@@ -7,17 +7,18 @@ BUFF_SIZE = 16
 if __name__ == "__main__":
     SERVER_IP = "localhost"
     SERVER_PORT = 8000
-    SERVER_ADRESS = (SERVER_IP, SERVER_PORT)
+    SERVER_ADDRESS = (SERVER_IP, SERVER_PORT)
     
-    server_socket_UDP = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    server_socket_UDP.bind(SERVER_ADRESS)
+    server_socketTCP = socketTCP.SocketTCP()
+    server_socketTCP.bind(SERVER_ADDRESS)
     print("socket creado")
 
     str = b""
-    print(type(str))
+#    print(type(str))
     while True:
-        print("esperando mensaje")
-        msg, add = server_socket_UDP.recvfrom(BUFF_SIZE)
-        print(f"Recibi el mensaje: {msg}")
-        str += msg
-        print(f"El archivo (por ahora) es: \n{str}")
+        client_socket, client_address = server_socketTCP.accept()
+#        print("esperando mensaje")
+#        msg, add = server_socketTCP.recv(BUFF_SIZE)
+#        print(f"Recibi el mensaje: {msg}")
+#        str += msg
+#        print(f"El archivo (por ahora) es: \n{str}")
