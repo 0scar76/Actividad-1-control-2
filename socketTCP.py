@@ -72,7 +72,7 @@ class SocketTCP:
             "seq": seq_init.to_bytes(4, "big"),
             "data": b""
         }
-
+        print(first_shake)
         self.sckt.sendto(self.create_segment(first_shake), address)
         second_shake, server_address = self.sckt.recvfrom(5)
 
@@ -94,6 +94,8 @@ class SocketTCP:
             
             self.sckt.sendto(self.create_segment(third_shake), server_address)
             self.remote_address = server_address
+
+            print(third_shake)
         else:
             print(f"No se pudo conectar a {address}")
             
@@ -121,7 +123,7 @@ class SocketTCP:
                 "seq": (int.from_bytes(first_shake[1:5], "big") + 1).to_bytes(4, "big"),
                 "data": b""
             }
-            
+            print(second_shake)
             new_sckt.sckt.sendto(self.create_segment(second_shake), address)
         else:
             print("No se pudo aceptar una conexión")
