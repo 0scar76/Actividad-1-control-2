@@ -14,7 +14,6 @@ if __name__ == "__main__":
     print("socket creado")
 
     str = b""
-    print(type(str))
     while True:
         print("esperando mensaje")
         msg, add = server_socket_UDP.recvfrom(BUFF_SIZE)

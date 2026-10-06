@@ -15,11 +15,11 @@ class SocketTCP:
         FIN = 0
 
         flags = message[0]
-        if (flags == 4) or (flags == 6):
+        if (int.from_bytes(flags) == 4) or (int.from_bytes(flags) == 6):
             SYN = 1
-        if (flags == 2) or (flags == 3) or (flags == 6):
+        if (int.from_bytes(flags) == 2) or (int.from_bytes(flags) == 3) or (int.from_bytes(flags) == 6):
             ACK = 1
-        if (flags == 1) or (flags == 3):
+        if (int.from_bytes(flags) == 1) or (int.from_bytes(flags) == 3):
             FIN = 1
 
         seq = message[1:5]
@@ -55,7 +55,7 @@ class SocketTCP:
 
         data = parsed_message["data"]
 
-        final_message = flags + seq + data
+        final_message = flags.to_bytes(1) + seq + data
         return final_message
 
     def connect(address):
