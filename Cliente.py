@@ -12,8 +12,8 @@ if __name__ == "__main__":
     client_socket_UDP = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
     mensaje = input("Introduzca el mensaje a enviar\n")
-    flags = 6
-    seq = 45
+    flags = 6 # generico
+    seq = 45 # generico
     final_mensaje = flags.to_bytes(1) + seq.to_bytes(4) + mensaje.encode("utf-8")
 
 
