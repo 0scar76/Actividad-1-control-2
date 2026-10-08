@@ -13,6 +13,7 @@ class SocketTCP:
         self.remote_address = None
         self.message_remaining = 0
         self.message_seq = 0
+        self.recv_buffer = b""
         self.ip = None
         self.port = None
 
@@ -212,9 +213,48 @@ class SocketTCP:
         start = 5
         chunk = final_mensaje[5:5+MAX_PACKET_SIZE]
 
-        while (start - 5 < len): #puede ser que tenga que ser <= revisar
+        while (start - 5 < len):
             self.sckt.sendto(chunk.encode("utf-8") if type(chunk) == str else chunk, self.remote_address)
             start += MAX_PACKET_SIZE
             chunk = final_mensaje[start:(start + MAX_PACKET_SIZE)]
 
         return 
+
+    def close(self):
+
+        msg_close = {
+            "SYN": 0,
+            "ACK": 0,
+            "FIN": 1,
+            "seq": self.message_seq,
+            "data": b''
+        }
+
+        msg_close = self.create_segment(msg_close)
+        self.sckt.sendto(msg_close, self.remote_address)
+
+        attempts = 10
+        finack, _ = self.sckt.recvfrom(5)
+
+        while (attempts > 0 and int.from_bytes(finack[0]) != 3):
+                    finack, _ = self.sckt.recvfrom(5)
+                    attempts -= 1
+
+        if (attempts > 0):
+            self.parse_segment(finack)
+
+
+
+    def recv_close(self):
+
+        msg_close = {
+            "SYN": 0,
+            "ACK": 1,
+            "FIN": 1,
+            "seq": self.message_seq,
+            "data": b''
+        }
+
+        msg_close = self.create_segment(msg_close)
+
+        pass
