@@ -21,11 +21,16 @@ class SocketTCP:
         FIN = 0
 
         flags = message[0]
-        if (flags == 4) or (flags == 6):
+
+        if (int.from_bytes(flags) == 4)
+        or (int.from_bytes(flags) == 6):
             SYN = 1
-        if (flags == 2) or (flags == 3) or (flags == 6):
+        if (int.from_bytes(flags) == 2)
+        or (int.from_bytes(flags) == 3) 
+        or (int.from_bytes(flags) == 6):
             ACK = 1
-        if (flags == 1) or (flags == 3):
+        if (int.from_bytes(flags) == 1)
+        or (int.from_bytes(flags) == 3):
             FIN = 1
 
         seq = message[1:5]
@@ -81,7 +86,7 @@ class SocketTCP:
         second_shake, server_address = self.sckt.recvfrom(5)
         
         while (attempts > 0 and 
-               (second_shake[0] != 6 or 
+               (int.from_bytes(second_shake[0]) != 6 or 
                 int.from_bytes(second_shake[1:5], "big") != (self.message_seq + 1))):
             self.sckt.sendto(self.create_segment(first_shake), address)
             second_shake, server_address = self.sckt.recvfrom(5)
@@ -89,6 +94,7 @@ class SocketTCP:
         
         if (attempts > 0):
             self.message_seq += 2
+
             third_shake = {
                 "SYN": 0,
                 "ACK": 1,
@@ -112,7 +118,7 @@ class SocketTCP:
         attempts = 10
         first_shake, address = self.sckt.recvfrom(5)
        
-        while (attempts > 0 and first_shake[0] != 4):
+        while (attempts > 0 and int.from_bytes(first_shake[0]) != 4):
             first_shake, address = self.sckt.recvfrom(5)
             attempts -= 1
         
@@ -237,7 +243,64 @@ class SocketTCP:
         self.recv_buffer = self.recv_buffer[buff_size:]
         
         return recived
-    
+
     def sendto(self, message):
-        bit_message = self.create_segment(message)
+        len = len(message)
+        self.parse_segment(message)
+
+        seq = message["seq"] + len
+        message["seq"] = seq
+
+        final_mensaje = self.create_segment(message)
+
+        # Se envia el header TCP (flags + seq)
+        self.sckt.sendto(final_mensaje[0:5], self.remote_address)
+
+        start = 5
+        chunk = final_mensaje[5:5+MAX_PACKET_SIZE]
+
+        while (start - 5 < len):
+            self.sckt.sendto(chunk.encode("utf-8") if type(chunk) == str else chunk, self.remote_address)
+            start += MAX_PACKET_SIZE
+            chunk = final_mensaje[start:(start + MAX_PACKET_SIZE)]
+
+        return 
+
+    def close(self):
+
+        msg_close = {
+            "SYN": 0,
+            "ACK": 0,
+            "FIN": 1,
+            "seq": self.message_seq,
+            "data": b''
+        }
+
+        msg_close = self.create_segment(msg_close)
+        self.sckt.sendto(msg_close, self.remote_address)
+
+        attempts = 10
+        finack, _ = self.sckt.recvfrom(5)
+
+        while (attempts > 0 and int.from_bytes(finack[0]) != 3):
+                    finack, _ = self.sckt.recvfrom(5)
+                    attempts -= 1
+
+        if (attempts > 0):
+            self.parse_segment(finack)
+
+
+
+    def recv_close(self):
+
+        msg_close = {
+            "SYN": 0,
+            "ACK": 1,
+            "FIN": 1,
+            "seq": self.message_seq,
+            "data": b''
+        }
+
+        msg_close = self.create_segment(msg_close)
+
         pass

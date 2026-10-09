@@ -1,24 +1,28 @@
 import socket
 import socketTCP
-import sys 
 
-BUFF_SIZE = 16
+server_socketTCP = socketTCP.SocketTCP()
+server_socketTCP.bind(("localhost", 8000))
+connection_socketTCP, new_address = server_socketTCP.accept()
 
-if __name__ == "__main__":
-    SERVER_IP = "localhost"
-    SERVER_PORT = 8000
-    SERVER_ADDRESS = (SERVER_IP, SERVER_PORT)
-    
-    server_socketTCP = socketTCP.SocketTCP()
-    server_socketTCP.bind(SERVER_ADDRESS)
-    print("socket creado")
+# test 1
+buff_size = 16
+full_message = connection_socketTCP.recv(buff_size)
+print("Test 1 received:", full_message)
+if full_message == "Mensje de len=16".encode(): print("Test 1: Passed")
+else: print("Test 1: Failed")
 
-    str = b""
-#    print(type(str))
-    while True:
-        client_socket, client_address = server_socketTCP.accept()
-#        print("esperando mensaje")
-#        msg, add = server_socketTCP.recv(BUFF_SIZE)
-#        print(f"Recibi el mensaje: {msg}")
-#        str += msg
-#        print(f"El archivo (por ahora) es: \n{str}")
+# test 2
+buff_size = 19
+full_message = connection_socketTCP.recv(buff_size)
+print("Test 2 received:", full_message)
+if full_message == "Mensaje de largo 19".encode(): print("Test 2: Passed")
+else: print("Test 2: Failed")
+
+# test 3
+buff_size = 14
+message_part_1 = connection_socketTCP.recv(buff_size)
+message_part_2 = connection_socketTCP.recv(buff_size)
+print("Test 3 received:", message_part_1 + message_part_2)
+if (message_part_1 + message_part_2) == "Mensaje de largo 19".encode(): print("Test 3: Passed")
+else: print("Test 3: Failed")
