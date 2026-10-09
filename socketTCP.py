@@ -1,6 +1,8 @@
 import socket
 import random
 
+MAX_PACKET_SIZE = 16
+
 class SocketTCP:
     def __init__(self, sckt = None):
         if sckt is None:
