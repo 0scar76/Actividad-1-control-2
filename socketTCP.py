@@ -11,9 +11,10 @@ class SocketTCP:
             self.sckt = sckt
         
         self.remote_address = None
-        self.message_remaining = 0
+        self.message_remaining = b''
+        self.len_msg = 0
+        self.len_sended = 0
         self.message_seq = 0
-        self.recv_buffer = b""
         self.ip = None
         self.port = None
 
@@ -31,7 +32,7 @@ class SocketTCP:
         if (flags == 1) or (flags == 3):
             FIN = 1
 
-        seq = int.from_bytes(message[1:5], "big")
+        seq = int.from_bytes(message[1:5])
         data = message[5:len(message)]
 
         parsed_message = {
@@ -85,7 +86,7 @@ class SocketTCP:
         
         while (attempts > 0 and 
                (second_shake[0] != 6 or 
-                int.from_bytes(second_shake[1:5], "big") != (self.message_seq + 1))):
+                int.from_bytes(second_shake[1:5]) != (self.message_seq + 1))):
             self.sckt.sendto(self.create_segment(first_shake), address)
             second_shake, server_address = self.sckt.recvfrom(5)
             attempts -= 1
@@ -129,7 +130,7 @@ class SocketTCP:
                 "SYN": 1,
                 "ACK": 1,
                 "FIN": 0,
-                "seq": (int.from_bytes(first_shake[1:5], "big") + 1),
+                "seq": (int.from_bytes(first_shake[1:5]) + 1),
                 "data": b""
             }
             print(second_shake)
@@ -147,7 +148,7 @@ class SocketTCP:
         
         if (attempts > 0):
             new_sckt.remote_address = address
-            new_sckt.message_seq = int.from_bytes(third_shake[1:5], "big")
+            new_sckt.message_seq = int.from_bytes(third_shake[1:5])
             return new_sckt, (self.ip, new_port)
         else:
             print("No se pudo aceptar una conexión")
@@ -243,34 +244,43 @@ class SocketTCP:
         return recived
 
     def recv(self, buff_size):
-        attempts = 10
-        first_message, sender = self.sckt.recvfrom(5 + 16)
-
-        while (attempts > 0 and sender != self.remote_address):
+        if self.len_msg == 0:
+            attempts = 10
             first_message, sender = self.sckt.recvfrom(5 + 16)
-            attempts -= 1
 
-        if (attempts <= 0):
-            print("No se pudo recibir un mensaje de la dirección esperada")
-            return b""
+            while (attempts > 0 and sender != self.remote_address):
+                first_message, sender = self.sckt.recvfrom(5 + 16)
+                attempts -= 1
 
-        parsed_first = self.parse_segment(first_message)
+            if (attempts <= 0):
+                print("No se pudo recibir un mensaje de la dirección esperada")
+                return b""
+            parsed_first = self.parse_segment(first_message)
 
-        len_msg = parsed_first["data"]
-        self.message_seq += len(len_msg)
+            self.len_msg = int.from_bytes(parsed_first["data"])
+            self.message_seq += self.len_msg
 
-        first_response = {
-            "SYN": 0,
-            "ACK": 1,
-            "FIN": 0,
-            "seq": self.message_seq,
-            "data": b''
-        }
+            first_response = {
+                "SYN": 0,
+                "ACK": 1,
+                "FIN": 0,
+                "seq": self.message_seq,
+                "data": b''
+            }
 
-        self.sckt.sendto(self.create_segment(first_response), self.remote_address)
+            self.sckt.sendto(self.create_segment(first_response), self.remote_address)
 
         message = b''
-        while (len(message) != min(int.from_bytes(len_msg), buff_size)):
+        while (len(message) != min(self.len_msg, buff_size)):
+            if self.message_remaining != b'':
+                if len(self.message_remaining) >= min(self.len_msg, buff_size):
+                    message += self.message_remaining[0:min(self.len_msg, buff_size)]
+                    self.message_remaining = self.message_remaining[min(self.len_msg, buff_size):]
+                else:
+                    message += self.message_remaining
+                    self.message_remaining = b''
+                    print(message.decode())
+                continue
             attempts = 10
             act_message, sender = self.sckt.recvfrom(5 + 16)
     
@@ -283,8 +293,16 @@ class SocketTCP:
                 return b""
 
             parsed_act = self.parse_segment(act_message)
-            message += parsed_act["data"]
+            if len(parsed_act["data"] + message) > min(self.len_msg, buff_size):
+                self.message_remaining = parsed_act["data"][min(self.len_msg, buff_size) - len(message):]
+                print(parsed_act["data"][min(self.len_msg, buff_size) - len(message):].decode())
+                message += parsed_act["data"][0:min(self.len_msg, buff_size) - len(message)]
+                print(message.decode())
+            else:
+                message += parsed_act["data"]
+                print(message)
             self.message_seq += len(parsed_act["data"])
+            self.len_sended += len(message)
 
             acknowledge = {
                 "SYN": 0,
@@ -295,6 +313,11 @@ class SocketTCP:
             }
 
             self.sckt.sendto(self.create_segment(acknowledge), self.remote_address)
+
+            if self.len_sended >= self.len_msg:
+                self.len_msg = 0
+                self.len_sended = 0
+                break
 
         return message
 
@@ -338,6 +361,8 @@ class SocketTCP:
                 "seq": self.message_seq + start,
                 "data": chunk.encode("utf-8") if type(chunk) == str else chunk
             }
+
+            print(parsed_message)
 
             final_message = self.create_segment(parsed_message)
             self.sckt.sendto(final_message, self.remote_address)
