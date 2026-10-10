@@ -4,11 +4,9 @@ import random
 MAX_PACKET_SIZE = 16
 
 class SocketTCP:
-    def __init__(self, sckt = None):
-        if sckt is None:
-            self.sckt = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        else:
-            self.sckt = sckt
+    def __init__(self):
+        self.sckt = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.sckt.settimeout(5)
         
         self.remote_address = None
         self.message_remaining = b''
@@ -176,6 +174,11 @@ class SocketTCP:
                 print("No coincide el numero de secuencia (1)")
                 return b''
 
+            if parsed_first["FIN"] == 1:
+                self.recv_close()
+                print("se recibio mensaje de cierre")
+                return b''
+
             self.len_msg = int.from_bytes(parsed_first["data"])
             self.message_seq += len(parsed_first["data"])
 
@@ -220,6 +223,11 @@ class SocketTCP:
                 print(parsed_act["seq"])
     
                 print("No coincide el numero de secuencia (2)")
+                return b''
+
+            if parsed_act["FIN"] == 1:
+                self.recv_close()
+                print("se recibio mensaje de cierre")
                 return b''
 
             if len(parsed_act["data"] + message) > min(self.len_msg, buff_size):
@@ -339,59 +347,140 @@ class SocketTCP:
         return 
 
     def close(self):
+        try:
+            attempts = 3
+            last_response, sender = self.sckt.recvfrom(5 + 16)
 
+            while (attempts > 0 and sender != self.remote_address):
+                last_response, sender = self.sckt.recvfrom(5 + 16)
+                attempts -= 1
 
-        msg_close = {
-            "SYN": 0,
-            "ACK": 0,
-            "FIN": 1,
-            "seq": self.message_seq,
-            "data": b''
-        }
+            if (attempts <= 0):
+                print("No se pudo recibir un mensaje de la dirección esperada")
+                return
 
-        msg_close = self.create_segment(msg_close)
-        self.sckt.sendto(msg_close, self.remote_address)
+            parsed_response = self.parse_segment(last_response)
+            print("recibi:", parsed_response)
 
-        attempts = 10
-        finack, sender = self.sckt.recvfrom(5 + 16)
+            if parsed_response["seq"] != self.message_seq:
+                print(self.message_seq)
+                print(parsed_response["seq"])
 
-        while (attempts > 0 and sender != self.remote_address):
+                print("No coincide el numero de secuencia (1)")
+                return
+
+            self.message_seq += 1
+            if parsed_response["FIN"] == 0:
+                print("yo hago el cierre")
+
+                msg_close = {
+                    "SYN": 0,
+                    "ACK": 0,
+                    "FIN": 1,
+                    "seq": self.message_seq,
+                    "data": b''
+                }
+
+                self.sckt.sendto(self.create_segment(msg_close), self.remote_address)
+                print("envie:", msg_close)
+
+                attempts = 3
+                finack, sender = self.sckt.recvfrom(5 + 16)
+
+                while (attempts > 0 and sender != self.remote_address and parsed_finack["seq"] != self.message_seq + 1):
+                    finack, sender = self.sckt.recvfrom(5 + 16)
+                    attempts -= 1
+
+                if (attempts <= 0):
+                    print("Se acabaron los intentos, asumo que el otro quiere cerrar conexion")
+
+                    self.sckt.close()
+                    print("se cerro la conexion")
+                    return
+
+                parsed_finack = self.parse_segment(finack)
+                print("recibi:", parsed_finack)
+
+                self.message_seq = parsed_finack["seq"] + 1
+
+                acknowledge = {
+                    "SYN": 0,
+                    "ACK": 1,
+                    "FIN": 0,
+                    "seq": self.message_seq,
+                    "data": b''
+                }
+
+                self.sckt.sendto(self.create_segment(acknowledge), self.remote_address)
+                print("envie:", acknowledge)
+
+                self.sckt.close()
+                print("se cerro la conexion")
+
+            else: # yo no hago el cierre, quedo algo pendiente pero yo no quiero mas
+                self.recv_close()
+        except TimeoutError:
+            print("yo hago el cierre")
+
+            msg_close = {
+                "SYN": 0,
+                "ACK": 0,
+                "FIN": 1,
+                "seq": self.message_seq,
+                "data": b''
+            }
+
+            self.sckt.sendto(self.create_segment(msg_close), self.remote_address)
+            print("envie:", msg_close)
+
+            attempts = 3
             finack, sender = self.sckt.recvfrom(5 + 16)
-            attempts -= 1
 
-        if (attempts <= 0):
-            print("No se pudo recibir un mensaje de la dirección esperada")
-            return
+            while (attempts > 0 and sender != self.remote_address and parsed_finack["seq"] != self.message_seq + 1):
+                finack, sender = self.sckt.recvfrom(5 + 16)
+                attempts -= 1
 
-        parsed_finack = self.parse_segment(finack)
-        self.message_seq = parsed_finack["seq"] + 1
+            if (attempts <= 0):
+                print("Se acabaron los intentos, asumo que el otro quiere cerrar conexion")
 
-        acknowledge = {
-            "SYN": 0,
-            "ACK": 1,
-            "FIN": 0,
-            "seq": self.message_seq,
-            "data": b''
-        }
+                self.sckt.close()
+                print("se cerro la conexion")
+                return
 
-        self.sckt.sendto(self.create_segment(acknowledge), self.remote_address)
-        self.remote_address = None
+            parsed_finack = self.parse_segment(finack)
+            print("recibi:", parsed_finack)
 
-        print("se cerro la conexion")
-        print(parsed_finack)
+            self.message_seq = parsed_finack["seq"] + 1
+
+            acknowledge = {
+                "SYN": 0,
+                "ACK": 1,
+                "FIN": 0,
+                "seq": self.message_seq,
+                "data": b''
+            }
+
+            self.sckt.sendto(self.create_segment(acknowledge), self.remote_address)
+            print("envie:", acknowledge)
+
+            self.sckt.close()
+            print("se cerro la conexion")
+
         return
 
     def recv_close(self):
+        print("yo recibo el cierre")
 
         msg_close = {
             "SYN": 0,
             "ACK": 1,
             "FIN": 1,
-            "seq": self.message_seq + 1,
+            "seq": self.message_seq,
             "data": b''
         }
 
         self.sckt.sendto(self.create_segment(msg_close), self.remote_address)
+        print("envie:", msg_close)
 
         attempts = 10
         fin, sender = self.sckt.recvfrom(5 + 16)
@@ -404,6 +493,10 @@ class SocketTCP:
             print("No se pudo recibir un mensaje de la dirección esperada")
             return
 
+        recv_fin = self.parse_segment(fin)
+        print("recibi:", recv_fin)
+
+        self.sckt.close()
         print("se cerro la conexion")
-        print(self.parse_segment(fin))
+
         return
