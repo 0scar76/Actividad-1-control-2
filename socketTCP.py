@@ -67,7 +67,7 @@ class SocketTCP:
         return final_message
 
     def connect(self, address):
-        attempts = 10
+        attempts = 3
         self.message_seq = random.randint(0, 100)
 
         first_shake = {
@@ -77,18 +77,40 @@ class SocketTCP:
             "seq": self.message_seq,
             "data": b""
         }
-        print(first_shake)
         
         self.sckt.sendto(self.create_segment(first_shake), address)
-        second_shake, server_address = self.sckt.recvfrom(5)
-        
-        while (attempts > 0 and 
-               (second_shake[0] != 6 or 
-                int.from_bytes(second_shake[1:5]) != (self.message_seq + 1))):
-            self.sckt.sendto(self.create_segment(first_shake), address)
+        print("envie:", first_shake)
+
+        parsed_second = {
+            "SYN": 0,
+            "ACK": 0,
+            "FIN": 0,
+            "seq": self.message_seq,
+            "data": b''
+        }
+
+        try:
             second_shake, server_address = self.sckt.recvfrom(5)
+            parsed_second = self.parse_segment(second_shake)
             attempts -= 1
-        
+            while attempts > 0 and ((parsed_second["SYN"] != 1 and parsed_second["ACK"] != 1) or parsed_second["seq"] != (self.message_seq + 1)):
+                self.sckt.sendto(self.create_segment(first_shake), address)
+                second_shake, server_address = self.sckt.recvfrom(5)
+                parsed_second = self.parse_segment(second_shake)
+                attempts -= 1
+        except TimeoutError:
+            while (attempts > 0 and ((parsed_second["SYN"] != 1 and parsed_second["ACK"] != 1) or parsed_second["seq"] != (self.message_seq + 1))):
+                self.sckt.sendto(self.create_segment(first_shake), address)
+                try:
+                    second_shake, server_address = self.sckt.recvfrom(5)
+                    parsed_second = self.parse_segment(second_shake)
+                    attempts -= 1
+                except TimeoutError:
+                    attempts -= 1
+        if (parsed_second["SYN"] == 1 and parsed_second["ACK"] == 1) and parsed_second["seq"] == (self.message_seq + 1):
+            attempts = 1
+    
+        print("recibi:", parsed_second)
         if (attempts > 0):
             self.message_seq += 2
 
@@ -101,24 +123,61 @@ class SocketTCP:
             }
             
             self.sckt.sendto(self.create_segment(third_shake), server_address)
-            self.remote_address = server_address
+            print("envie:", third_shake)
 
-            print(third_shake)
+            attempts = 3
+            try:
+                second_shake_try, server_address = self.sckt.recvfrom(5)
+                parsed_second_try = self.parse_segment(second_shake_try)
+                attempts -= 1
+                while attempts > 0 and parsed_second == parsed_second_try:
+                    self.sckt.sendto(self.create_segment(third_shake), address)
+                    second_shake_try, server_address = self.sckt.recvfrom(5)
+                    parsed_second_try = self.parse_segment(second_shake_try)
+                    attempts -= 1
+                if attempts > 0: # sali del while con intentos, recibi cualquier otra cosa, lo descarto y asumo conexion
+                    attempts = 1
+            except TimeoutError: # asumo que el server recibio mi ack y entonces se completo la conexion, porque no recibi nada dsp de enviarlo
+                attempts = 1
+                pass
+
+            if attempts <= 0: # sali del bloque anterior sin intentos, entonces el server no recibio mi ack en los 3 intentos, descarto la conexion (al igual que el server)
+                print(f"No se pudo conectar a {address}")
+                return
+            
+            self.remote_address = server_address
+            print(f"Se conecto a {address}")
+            return
         else:
             print(f"No se pudo conectar a {address}")
+            return
             
     def bind(self, address):
         self.sckt.bind(address)
         self.ip, self.port = address
 
     def accept(self):
-        attempts = 10
-        first_shake, address = self.sckt.recvfrom(5)
-       
-        while (attempts > 0 and first_shake[0] != 4):
+        attempts = 3
+        try:
             first_shake, address = self.sckt.recvfrom(5)
+            parsed_first = self.parse_segment(first_shake)
             attempts -= 1
-        
+            while attempts > 0 and parsed_first["SYN"] != 1:
+                first_shake, address = self.sckt.recvfrom(5)
+                parsed_first = self.parse_segment(first_shake)
+                attempts -= 1
+        except TimeoutError:
+            while attempts > 0 and parsed_first["SYN"] != 1:
+                try:
+                    first_shake, address = self.sckt.recvfrom(5)
+                    parsed_first = self.parse_segment(first_shake)
+                    attempts -= 1
+                except TimeoutError:
+                    attempts -= 1
+        if parsed_first["SYN"] == 1:
+            attempts = 1
+
+        print("recibi:", parsed_first)
         if (attempts > 0):
             new_port = random.randint(8001, 9000)
             new_sckt = SocketTCP() 
@@ -128,22 +187,58 @@ class SocketTCP:
                 "SYN": 1,
                 "ACK": 1,
                 "FIN": 0,
-                "seq": (int.from_bytes(first_shake[1:5]) + 1),
+                "seq": parsed_first["seq"] + 1,
                 "data": b""
             }
-            print(second_shake)
             new_sckt.sckt.sendto(self.create_segment(second_shake), address)
+            print("envie:", second_shake)
+
+            attempts = 3
+            try:
+                shake_try, address = self.sckt.recvfrom(5)
+                parsed_try = self.parse_segment(shake_try)
+                attempts -= 1
+                while attempts > 0:
+                    if parsed_first == parsed_try:
+                        new_sckt.sckt.sendto(self.create_segment(second_shake), address)
+                        shake_try, address = self.sckt.recvfrom(5)
+                        parsed_first = self.parse_segment(shake_try)
+                        attempts -= 1
+                    elif parsed_try["ACK"] != 1: 
+
+            except TimeoutError:
+                
+            if parsed_first["SYN"] == 1:
+                attempts = 1
         else:
             print("No se pudo aceptar una conexión")
             return
 
-        third_shake, address = new_sckt.sckt.recvfrom(5)
-        attempts = 10
+        attempts = 3
 
-        while (attempts > 0 and third_shake[0] != 2):
+        try:
             third_shake, address = new_sckt.sckt.recvfrom(5)
+            parsed_third = self.parse_segment(third_shake)
             attempts -= 1
-        
+            while attempts > 0 and (parsed_third["ACK"] != 1 or parsed_third["seq"] != parsed_first["seq"] + 2):
+                new_sckt.sckt.sendto(self.create_segment(second_shake), address)
+                print("envie:", second_shake)
+                third_shake, address = new_sckt.sckt.recvfrom(5)
+                parsed_third = self.parse_segment(third_shake)
+                attempts -= 1
+        except TimeoutError:
+            while attempts > 0 and (parsed_third["ACK"] != 1 or parsed_third["seq"] != parsed_first["seq"] + 2):
+                new_sckt.sckt.sendto(self.create_segment(second_shake), address)
+                try:
+                    third_shake, address = new_sckt.sckt.recvfrom(5)
+                    parsed_third = self.parse_segment(third_shake)
+                    attempts -= 1
+                except TimeoutError:
+                    attempts -= 1
+        if parsed_third["ACK"] == 1 and parsed_third["seq"] == parsed_first["seq"] + 2:
+            attempts = 1
+
+        print("recibi:", parsed_third)
         if (attempts > 0):
             new_sckt.remote_address = address
             new_sckt.message_seq = int.from_bytes(third_shake[1:5])
@@ -154,7 +249,7 @@ class SocketTCP:
 
     def recv(self, buff_size):
         if self.len_msg == 0:
-            attempts = 10
+            attempts = 3
             first_message, sender = self.sckt.recvfrom(5 + 16)
 
             while (attempts > 0 and sender != self.remote_address):
@@ -204,7 +299,7 @@ class SocketTCP:
                     self.message_remaining = b''
                 continue
 
-            attempts = 10
+            attempts = 3
             act_message, sender = self.sckt.recvfrom(5 + 16)
     
             while (attempts > 0 and sender != self.remote_address):
@@ -271,7 +366,7 @@ class SocketTCP:
         self.sckt.sendto(self.create_segment(first_message), self.remote_address)
         print("envie:", first_message)
 
-        attempts = 10
+        attempts = 3
         first_response, sender = self.sckt.recvfrom(5 + 16)
 
         while (attempts > 0 and sender != self.remote_address):
@@ -313,7 +408,7 @@ class SocketTCP:
             self.sckt.sendto(final_message, self.remote_address)
             print("envie:", parsed_message)
 
-            attempts = 10
+            attempts = 3
             act_response, sender = self.sckt.recvfrom(5 + 16)
     
             while (attempts > 0 and sender != self.remote_address):
@@ -386,9 +481,11 @@ class SocketTCP:
 
                 attempts = 3
                 finack, sender = self.sckt.recvfrom(5 + 16)
+                parsed_finack = self.parse_segment(finack)
 
                 while (attempts > 0 and sender != self.remote_address and parsed_finack["seq"] != self.message_seq + 1):
                     finack, sender = self.sckt.recvfrom(5 + 16)
+                    parsed_finack = self.parse_segment(finack)
                     attempts -= 1
 
                 if (attempts <= 0):
@@ -398,7 +495,6 @@ class SocketTCP:
                     print("se cerro la conexion")
                     return
 
-                parsed_finack = self.parse_segment(finack)
                 print("recibi:", parsed_finack)
 
                 self.message_seq = parsed_finack["seq"] + 1
@@ -435,9 +531,11 @@ class SocketTCP:
 
             attempts = 3
             finack, sender = self.sckt.recvfrom(5 + 16)
+            parsed_finack = self.parse_segment(finack)
 
             while (attempts > 0 and sender != self.remote_address and parsed_finack["seq"] != self.message_seq + 1):
                 finack, sender = self.sckt.recvfrom(5 + 16)
+                parsed_finack = self.parse_segment(finack)
                 attempts -= 1
 
             if (attempts <= 0):
@@ -447,7 +545,6 @@ class SocketTCP:
                 print("se cerro la conexion")
                 return
 
-            parsed_finack = self.parse_segment(finack)
             print("recibi:", parsed_finack)
 
             self.message_seq = parsed_finack["seq"] + 1
@@ -482,7 +579,7 @@ class SocketTCP:
         self.sckt.sendto(self.create_segment(msg_close), self.remote_address)
         print("envie:", msg_close)
 
-        attempts = 10
+        attempts = 3
         fin, sender = self.sckt.recvfrom(5 + 16)
 
         while (attempts > 0 and sender != self.remote_address):
