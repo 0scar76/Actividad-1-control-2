@@ -109,24 +109,21 @@ class SocketTCP:
                 "seq": self.message_seq,
                 "data": b""
             }
-            
-            self.sckt.sendto(self.create_segment(third_shake), server_address)
-            print("envie:", third_shake)
 
             attempts = 3
             parsed_second_try = parsed_second
-            try:
-                second_shake_try, server_address = self.sckt.recvfrom(5)
-                parsed_second_try = self.parse_segment(second_shake_try)
+            while attempts > 0 and parsed_second == parsed_second_try: # si o si voy a aceptar, pero si el otro no recibio tengo que volver a enviarle
+                self.sckt.sendto(self.create_segment(third_shake), server_address)
+                print("envie:", third_shake)
                 attempts -= 1
-                while attempts > 0 and parsed_second == parsed_second_try:
-                    self.sckt.sendto(self.create_segment(third_shake), address)
+                try:
                     second_shake_try, server_address = self.sckt.recvfrom(5)
                     parsed_second_try = self.parse_segment(second_shake_try)
-                    attempts -= 1
-                if attempts > 0: # sali del while con intentos, recibi cualquier otra cosa, lo descarto y asumo conexion
+                    print("recibi:", parsed_second_try)
+                except TimeoutError: # no recibi nada, asumo que recibio mi ack
                     attempts = 1
-            except TimeoutError: # asumo que el server recibio mi ack y entonces se completo la conexion, porque no recibi nada dsp de enviarlo
+
+            if attempts > 0: # sali del while con intentos, recibi cualquier otra cosa, lo descarto y asumo conexion
                 attempts = 1
             
             self.remote_address = server_address
