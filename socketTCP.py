@@ -4,11 +4,12 @@ import random
 MAX_PACKET_SIZE = 16
 
 class SocketTCP:
-    def __init__(self):
+    def __init__(self, timeout=1, debug=False):
         self.sckt = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.sckt.settimeout(5)
+        self.sckt.settimeout(timeout)
+        self.debug = debug
+
         self.last_send = None
-        
         self.remote_address = None
         self.message_remaining = b''
         self.len_msg = 0
@@ -88,13 +89,16 @@ class SocketTCP:
 
         while parsed_second["SYN"] != 1 or parsed_second["ACK"] != 1 or parsed_second["seq"] != (self.message_seq + 1):
             self.sckt.sendto(self.create_segment(first_shake), address)
-            print("envie:", first_shake)
+            if self.debug:
+                print("envie:", first_shake)
             try:
                 second_shake, server_address = self.sckt.recvfrom(5)
                 parsed_second = self.parse_segment(second_shake)
-                print("recibi:", parsed_second)
+                if self.debug:
+                    print("recibi:", parsed_second)
             except TimeoutError:
-                print("no pude recibir")
+                if self.debug:
+                    print("no pude recibir")
                 continue
 
         self.message_seq += 2
@@ -111,13 +115,16 @@ class SocketTCP:
         
         while parsed_second == parsed_second_try:
             self.sckt.sendto(self.create_segment(third_shake), server_address)
-            print("envie:", third_shake)
+            if self.debug:
+                print("envie:", third_shake)
             try:
                 second_shake_try, server_address = self.sckt.recvfrom(5)
                 parsed_second_try = self.parse_segment(second_shake_try)
-                print("recibi:", parsed_second_try)
+                if self.debug:
+                    print("recibi:", parsed_second_try)
             except TimeoutError:
-                print("no recibi nada")
+                if self.debug:
+                    print("no recibi nada")
                 break
 
         self.last_send = third_shake
@@ -141,9 +148,11 @@ class SocketTCP:
             try:
                 first_shake, server_address = self.sckt.recvfrom(5)
                 parsed_first = self.parse_segment(first_shake)
-                print("recibi:", parsed_first)
+                if self.debug:
+                    print("recibi:", parsed_first)
             except TimeoutError:
-                print("no pude recibir")
+                if self.debug:
+                    print("no pude recibir")
                 continue
 
         new_port = random.randint(8001, 9000)
@@ -173,13 +182,16 @@ class SocketTCP:
                  parsed_third["seq"] != self.message_seq + 1 or
                  second_server != server_address):
             new_sckt.sckt.sendto(self.create_segment(second_shake), server_address)
-            print("envie:", second_shake)
+            if self.debug:
+                print("envie:", second_shake)
             try:
                 third_shake, second_server = new_sckt.sckt.recvfrom(5)
                 parsed_third = self.parse_segment(third_shake)
-                print("recibi:", parsed_third)
+                if self.debug:
+                    print("recibi:", parsed_third)
             except TimeoutError:
-                print("no pude recibir")
+                if self.debug:
+                    print("no pude recibir")
                 continue
 
         new_sckt.remote_address = server_address
@@ -202,16 +214,19 @@ class SocketTCP:
                 try:
                     first_message, sender = self.sckt.recvfrom(5 + 16)
                     parsed_first = self.parse_segment(first_message)
-                    print("recibi:", parsed_first)
+                    if self.debug:
+                        print("recibi:", parsed_first)
                     if parsed_first["FIN"] == 1:
                         self.recv_close()
-                        print("se recibio mensaje de cierre")
+                        if self.debug:
+                            print("se recibio mensaje de cierre")
                         return b''
                     if parsed_first["ACK"] == 1: #
                         continue
                     if parsed_first["seq"] > 0 and parsed_first["seq"] < self.message_seq and sender == self.remote_address:
                         self.sckt.sendto(self.create_segment(self.last_send), self.remote_address)
-                        print("envie:", self.last_send)
+                        if self.debug:
+                            print("envie:", self.last_send)
                 except TimeoutError:
                     continue
 
@@ -227,7 +242,8 @@ class SocketTCP:
             }
 
             self.sckt.sendto(self.create_segment(first_response), self.remote_address)
-            print("envie:", first_response)
+            if self.debug:
+                print("envie:", first_response)
 
             self.last_send = first_response
 
@@ -255,15 +271,18 @@ class SocketTCP:
                 try:
                     act_message, sender = self.sckt.recvfrom(5 + 16)
                     parsed_act = self.parse_segment(act_message)
-                    print("recibi:", parsed_act)
+                    if self.debug:
+                        print("recibi:", parsed_act)
                     if parsed_act["FIN"] == 1:
                         self.recv_close()
-                        print("se recibio mensaje de cierre")
-                        print("se acabo recv")
+                        if self.debug:
+                            print("se recibio mensaje de cierre")
+                            print("se acabo recv")
                         return b''
                     if parsed_act["seq"] < self.message_seq:
                         self.sckt.sendto(self.create_segment(self.last_send), self.remote_address)
-                        print("envie:", self.last_send)
+                        if self.debug:
+                            print("envie:", self.last_send)
                 except TimeoutError:
                     continue
 
@@ -284,7 +303,8 @@ class SocketTCP:
             }
 
             self.sckt.sendto(self.create_segment(acknowledge), self.remote_address)
-            print("envie:", acknowledge)
+            if self.debug:
+                print("envie:", acknowledge)
             self.last_send = acknowledge
 
             if self.len_sended >= self.len_msg:
@@ -292,7 +312,8 @@ class SocketTCP:
                 self.len_sended = 0
                 break
 
-        print("se acabo recv")
+        if self.debug:
+            print("se acabo recv")
         return message
 
     def send(self, message):
@@ -317,21 +338,26 @@ class SocketTCP:
 
         while sender != self.remote_address or parsed_response["seq"] != self.message_seq + len(first_message["data"]):
             self.sckt.sendto(self.create_segment(first_message), self.remote_address)
-            print("envie:", first_message)
+            if self.debug:
+                print("envie:", first_message)
             try:
                 first_response, sender = self.sckt.recvfrom(5 + 16)
                 parsed_response = self.parse_segment(first_response)
-                print("recibi:", parsed_response)
+                if self.debug:
+                    print("recibi:", parsed_response)
                 if parsed_response["FIN"] == 1:
                     self.recv_close()
-                    print("se recibio mensaje de cierre")
-                    print("se acabo send")
+                    if self.debug:
+                        print("se recibio mensaje de cierre")
+                        print("se acabo send")
                     return
                 if parsed_response["SYN"] == 1 and parsed_response["ACK"] == 1:
                     self.sckt.sendto(self.create_segment(self.last_send), self.remote_address)
-                    print("envie:", self.last_send)
+                    if self.debug:
+                        print("envie:", self.last_send)
             except TimeoutError:
-                print("no recibi nada")
+                if self.debug:
+                    print("no recibi nada")
                 continue
         
         new_seq = parsed_response["seq"]
@@ -360,13 +386,16 @@ class SocketTCP:
 
             while sender != self.remote_address or parsed_response["seq"] != self.message_seq + len(chunk):
                 self.sckt.sendto(self.create_segment(parsed_message), self.remote_address)
-                print("envie:", parsed_message)
+                if self.debug:
+                    print("envie:", parsed_message)
                 try:
                     act_response, sender = self.sckt.recvfrom(5 + 16)
                     parsed_response = self.parse_segment(act_response)
-                    print("recibi:", parsed_response)
+                    if self.debug:
+                        print("recibi:", parsed_response)
                 except TimeoutError:
-                    print("no recibi nada")
+                    if self.debug:
+                        print("no recibi nada")
                     continue
             
             start += MAX_PACKET_SIZE
@@ -375,7 +404,8 @@ class SocketTCP:
             new_seq = parsed_response["seq"]
             self.message_seq = new_seq
 
-        print("se acabo send")
+        if self.debug:
+            print("se acabo send")
         return 
 
     def close(self):
@@ -393,12 +423,14 @@ class SocketTCP:
             while (attempts > 0 and (sender != self.remote_address or parsed_response["seq"] != self.message_seq)):
                 last_response, sender = self.sckt.recvfrom(5 + 16)
                 parsed_response = self.parse_segment(last_response)
-                print("recibi:", parsed_response)
+                if self.debug:
+                    print("recibi:", parsed_response)
                 attempts -= 1
 
             self.message_seq += 1
             if parsed_response["FIN"] == 0:
-                print("yo hago el cierre")
+                if self.debug:
+                    print("yo hago el cierre")
 
                 msg_close = {
                     "SYN": 0,
@@ -420,18 +452,22 @@ class SocketTCP:
                 attempts = 3
                 while attempts > 0 and (sender != self.remote_address or parsed_finack["seq"] != self.message_seq + 1 or parsed_finack["ACK"] != 1 or parsed_finack["FIN"] != 1):
                     self.sckt.sendto(self.create_segment(msg_close), self.remote_address)
-                    print("envie:", msg_close)
+                    if self.debug:
+                        print("envie:", msg_close)
                     attempts -= 1
                     try:
                         finack, sender = self.sckt.recvfrom(5 + 16)
                         parsed_finack = self.parse_segment(finack)
-                        print("recibi:", parsed_finack)
+                        if self.debug:
+                            print("recibi:", parsed_finack)
                     except TimeoutError:
-                        print("no recibi nada")
+                        if self.debug:
+                            print("no recibi nada")
                         continue
 
-                if (attempts <= 0):
-                    print("Se acabaron los intentos, asumo que el otro quiere cerrar conexion")
+                if (attempts <= 0 and (sender != self.remote_address or parsed_finack["seq"] != self.message_seq + 1 or parsed_finack["ACK"] != 1 or parsed_finack["FIN"] != 1)):
+                    if self.debug:
+                        print("Se acabaron los intentos, asumo que el otro quiere cerrar conexion")
 
                     self.sckt.close()
                     print("se cerro la conexion")
@@ -448,7 +484,8 @@ class SocketTCP:
                 }
 
                 self.sckt.sendto(self.create_segment(acknowledge), self.remote_address)
-                print("envie:", acknowledge)
+                if self.debug:
+                    print("envie:", acknowledge)
 
                 self.sckt.close()
                 print("se cerro la conexion")
@@ -456,7 +493,8 @@ class SocketTCP:
             else: # yo no hago el cierre, quedo algo pendiente pero yo no quiero mas
                 self.recv_close()
         except TimeoutError:
-            print("yo hago el cierre")
+            if self.debug:
+                print("yo hago el cierre")
 
             msg_close = {
                 "SYN": 0,
@@ -478,18 +516,22 @@ class SocketTCP:
             attempts = 3
             while attempts > 0 and (sender != self.remote_address or parsed_finack["seq"] != self.message_seq + 1 or parsed_finack["ACK"] != 1 or parsed_finack["FIN"] != 1):
                 self.sckt.sendto(self.create_segment(msg_close), self.remote_address)
-                print("envie:", msg_close)
+                if self.debug:
+                    print("envie:", msg_close)
                 attempts -= 1
                 try:
                     finack, sender = self.sckt.recvfrom(5 + 16)
                     parsed_finack = self.parse_segment(finack)
-                    print("recibi:", parsed_finack)
+                    if self.debug:
+                        print("recibi:", parsed_finack)
                 except TimeoutError:
-                    print("no recibi nada")
+                    if self.debug:
+                        print("no recibi nada")
                     continue
 
-            if (attempts <= 0):
-                print("Se acabaron los intentos, asumo que el otro quiere cerrar conexion")
+            if (attempts <= 0 and (sender != self.remote_address or parsed_finack["seq"] != self.message_seq + 1 or parsed_finack["ACK"] != 1 or parsed_finack["FIN"] != 1)):
+                if self.debug:
+                    print("Se acabaron los intentos, asumo que el otro quiere cerrar conexion")
 
                 self.sckt.close()
                 print("se cerro la conexion")
@@ -506,7 +548,8 @@ class SocketTCP:
             }
 
             self.sckt.sendto(self.create_segment(acknowledge), self.remote_address)
-            print("envie:", acknowledge)
+            if self.debug:
+                print("envie:", acknowledge)
 
             self.sckt.close()
             print("se cerro la conexion")
@@ -514,7 +557,8 @@ class SocketTCP:
         return
 
     def recv_close(self):
-        print("yo recibo el cierre")
+        if self.debug:
+            print("yo recibo el cierre")
 
         msg_close = {
             "SYN": 0,
@@ -534,20 +578,24 @@ class SocketTCP:
         sender = ""
 
         attempts = 3
-        while attempts > 0 and (sender != self.remote_address or recv_fin["seq"] != self.message_seq + 1 or recv_fin["FIN"] != 1):
+        while attempts > 0 and (sender != self.remote_address or recv_fin["seq"] != self.message_seq + 1 or recv_fin["ACK"] != 1):
             self.sckt.sendto(self.create_segment(msg_close), self.remote_address)
-            print("envie:", msg_close)
+            if self.debug:
+                print("envie:", msg_close)
             attempts -= 1
             try:
                 fin, sender = self.sckt.recvfrom(5 + 16)
                 recv_fin = self.parse_segment(fin)
-                print("recibi:", recv_fin)
+                if self.debug:
+                    print("recibi:", recv_fin)
             except TimeoutError:
-                print("no recibi nada")
+                if self.debug:
+                    print("no recibi nada")
                 continue
 
-        if (attempts <= 0):
-            print("Se acabaron los intentos, asumo que el otro quiere cerrar conexion")
+        if (attempts <= 0 and (sender != self.remote_address or recv_fin["seq"] != self.message_seq + 1 or recv_fin["ACK"] != 1)):
+            if self.debug:
+                print("Se acabaron los intentos, asumo que el otro quiere cerrar conexion")
         
             self.sckt.close()
             print("se cerro la conexion")
