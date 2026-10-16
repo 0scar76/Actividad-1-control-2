@@ -22,7 +22,7 @@ if __name__ == "__main__":
             print("Uso: python3 Cliente.py <ip_server> <port_server> [(-d | --debug)] < <file_name>")
             sys.exit(0)
     else:
-        print("Uso: python3 Server.py <ip_server> <port_server> [(-d | --debug)] < <file_name>")
+        print("Uso: python3 Cliente.py <ip_server> <port_server> [(-d | --debug)] < <file_name>")
         sys.exit(0)
  
     message = sys.stdin.read().encode()
