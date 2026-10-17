@@ -3,6 +3,7 @@ import random
 
 MAX_PACKET_SIZE = 16
 BYTES_NUM = 1
+LIMIT = 30
 
 class SocketTCP:
     def __init__(self, timeout=1, debug=False):
@@ -230,7 +231,13 @@ class SocketTCP:
                         if self.debug:
                             print("envie:", self.last_send)
                 except TimeoutError:
+                    if self.debug:
+                        print("no recibi nada")
                     continue
+                except:
+                    if self.debug:
+                        print("ya se habia cerrado la conexion")
+                    return b''
 
             self.len_msg = int.from_bytes(parsed_first["data"]) # si sali del while recibi el mensaje correcto
             self.message_seq += len(parsed_first["data"])
@@ -269,12 +276,14 @@ class SocketTCP:
             }
             sender = ""
 
+            limit = 0
             while sender != self.remote_address or parsed_act["seq"] != self.message_seq:
                 try:
                     act_message, sender = self.sckt.recvfrom(5 + 16)
                     parsed_act = self.parse_segment(act_message)
                     if self.debug:
                         print("recibi:", parsed_act)
+                    limit = 0
                     if parsed_act["FIN"] == 1:
                         if self.debug:
                             print("se recibio mensaje de cierre")
@@ -286,7 +295,20 @@ class SocketTCP:
                         if self.debug:
                             print("envie:", self.last_send)
                 except TimeoutError:
+                    if self.debug:
+                        print("no recibi nada")
+                    limit += 1
+                    if limit == LIMIT:
+                        if self.debug:
+                            print("se supero el umbral de espera de mensajes, para no recibir eternamente voy a cerrar nomas")
+                            print("se acabo recv")
+                        self.close()
+                        return b''
                     continue
+                except:
+                    if self.debug:
+                        print("ya se habia cerrado la conexion")
+                    return b''
 
             if len(parsed_act["data"] + message) > min(self.len_msg, buff_size):
                 self.message_remaining = parsed_act["data"][min(self.len_msg, buff_size) - len(message):]
@@ -339,8 +361,14 @@ class SocketTCP:
         }
         sender = ""
 
+        limit = 0
         while sender != self.remote_address or parsed_response["seq"] != self.message_seq + len(first_message["data"]):
-            self.sckt.sendto(self.create_segment(first_message), self.remote_address)
+            try:
+                self.sckt.sendto(self.create_segment(first_message), self.remote_address)
+            except:
+                if self.debug:
+                    print("ya se habia cerrado la conexion")
+                return
             if self.debug:
                 print("envie:", first_message)
             try:
@@ -348,6 +376,7 @@ class SocketTCP:
                 parsed_response = self.parse_segment(first_response)
                 if self.debug:
                     print("recibi:", parsed_response)
+                limit = 0
                 if parsed_response["FIN"] == 1:
                     if self.debug:
                         print("se recibio mensaje de cierre")
@@ -361,7 +390,19 @@ class SocketTCP:
             except TimeoutError:
                 if self.debug:
                     print("no recibi nada")
+                limit += 1
+                if limit == LIMIT:
+                    if self.debug:
+                        print("se supero el umbral de mensajes enviados, para no enviar eternamente voy a cerrar nomas")
+                        print("se acabo send")
+                    self.close()
+                    return 
                 continue
+            except:
+                if self.debug:
+                    print("ya se habia cerrado la conexion")
+                return
+
         
         new_seq = parsed_response["seq"]
         self.message_seq = new_seq
@@ -387,8 +428,14 @@ class SocketTCP:
             }
             sender = ""
 
+            limit = 0
             while sender != self.remote_address or parsed_response["seq"] != self.message_seq + len(chunk):
-                self.sckt.sendto(self.create_segment(parsed_message), self.remote_address)
+                try:
+                    self.sckt.sendto(self.create_segment(parsed_message), self.remote_address)
+                except:
+                    if self.debug:
+                        print("ya se habia cerrado la conexion")
+                    return
                 if self.debug:
                     print("envie:", parsed_message)
                 try:
@@ -396,6 +443,7 @@ class SocketTCP:
                     parsed_response = self.parse_segment(act_response)
                     if self.debug:
                         print("recibi:", parsed_response)
+                    limit = 0
                     if parsed_response["FIN"] == 1:
                         if self.debug:
                             print("se recibio mensaje de cierre")
@@ -405,6 +453,18 @@ class SocketTCP:
                 except TimeoutError:
                     if self.debug:
                         print("no recibi nada")
+                    limit += 1
+                    if limit == LIMIT:
+                        if self.debug:
+                            print("se supero el umbral de mensajes enviados, para no enviar eternamente voy a cerrar nomas")
+                            print("se acabo send")
+                        self.close()
+                        return 
+                except:
+                    if self.debug:
+                        print("ya se habia cerrado la conexion")
+                    return
+
                     continue
             
             start += MAX_PACKET_SIZE
@@ -434,6 +494,20 @@ class SocketTCP:
                 parsed_response = self.parse_segment(last_response)
                 if self.debug:
                     print("recibi:", parsed_response)
+                    print(parsed_response["SYN"] == 0 and parsed_response["ACK"] == 0 and parsed_response["FIN"] == 0)
+                if parsed_response["SYN"] == 0 and parsed_response["ACK"] == 0 and parsed_response["FIN"] == 0:
+                    self.sckt.sendto(self.create_segment(self.last_send), self.remote_address)
+                    print("a")
+                    if self.debug:
+                        print("envie:", self.last_send)
+                    parsed_response = {
+                        "SYN": 0,
+                        "ACK": 0,
+                        "FIN": 0,
+                        "seq": -1,
+                        "data": b""
+                    }
+                    sender = ""
                 attempts -= 1
 
             self.message_seq += 1
@@ -511,6 +585,7 @@ class SocketTCP:
                 print("se cerro la conexion")
 
             else: # yo no hago el cierre, quedo algo pendiente pero yo no quiero mas
+                self.message_seq = parsed_response["seq"] + 1
                 self.recv_close()
         except TimeoutError:
             if self.debug:
