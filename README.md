@@ -44,6 +44,8 @@ Se menciona esto, ya que el enunciado permite como interpretación que desde uno
 
 El resto del programa sigue las instrucciones dadas en el enunciado de la actividad y a los diagramas presentes en la sección **Diagramas**.
 
+Durante el desarrollo de la actividad, por cómo se implementaron las funciones de la clase **socketTCP**, se encontró un caso de borde en el momento en que, si el cliente o server terminan de recibir y cierran la conexión (enviando los respectivos mensajes de respuesta), había un caso en el que el que enviaba no recibía ni el mensaje ACK, ni los 3 intentos de cierre, haciendo que trate de enviar el mensaje eternamente. Esto se resolvió con la variable **LIMIT**, la cual puede ser ajustada para que, al invocar **send** o **recv**, si no se recibe respuesta por **LIMIT** intentos seguidos, se cierre la conexión automáticamente.
+
 ## Implementación
 
 La clase **socketTCP(timeout=1, debug=False)** recibe como argumentos el timeout que se usará en el socket (en segundos) y un flag que dice si está en modo debug o no. Es importante recalcar que un objeto de la clase **socketTCP** puede ser llamado sin argumentos.
