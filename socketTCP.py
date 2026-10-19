@@ -524,10 +524,8 @@ class SocketTCP:
                 parsed_response = self.parse_segment(last_response)
                 if self.debug:
                     print("recibi:", parsed_response)
-                    print(parsed_response["SYN"] == 0 and parsed_response["ACK"] == 0 and parsed_response["FIN"] == 0)
                 if parsed_response["SYN"] == 0 and parsed_response["ACK"] == 0 and parsed_response["FIN"] == 0:
                     self.sckt.sendto(self.create_segment(self.last_send), self.remote_address)
-                    print("a")
                     if self.debug:
                         print("envie:", self.last_send)
                     parsed_response = {
