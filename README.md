@@ -2,7 +2,8 @@
 
 Link del repositorio en GitHub: [Repositorio](https://github.com/0scar76/Actividad-1-control-2.git)
 
-**En esta actividad únicamente se utilizó la inteligencia artificial para ver firmas de funciones.**
+**En esta actividad únicamente se utilizó la inteligencia artificial para consultar firmas de funciones y revisar correctitud del código escrito.**
+**Se usó Gemini 3.8 Flash y Claude Opus 5.5.**
 
 ## Integrantes:
 * **Oscar Conejeros Bruce**
